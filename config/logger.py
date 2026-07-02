@@ -1,53 +1,29 @@
 import logging
-import os
-from datetime import datetime
-from config.settings import Config
-
-_is_configured = False
+import sys
 
 def setup_logging() -> None:
     """
-    Membuat instance logger untuk setiap module pipeline
+    Configure root logger with console handler
     """
-    global _is_configured
-    if _is_configured:
-        return
-    
-    # buat folder jika belum dan buat file untuk menyimpan hasil log
-    os.makedirs(Config.LOG_DIR, exist_ok=True)
-    log_filename = Config.LOG_DIR / f"pipeline_{datetime.now().strftime('%Y-%m-%d')}.log"
+    root_logger = logging.getLogger()
 
-    # format log
-    log_format = "%(asctime)s | %(levelname)-6s | %(name)s | %(message)s"
-    date_format = "%Y-%m-%d %H:%M:%S"
+    if root_logger.hasHandlers():
+        return
+
+    root_logger.setLevel(logging.INFO)
     formatter = logging.Formatter(
-        fmt=log_format,
-        datefmt=date_format
+        fmt="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
     )
 
-    # root logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(formatter)
+    root_logger.addHandler(handler)
 
-    # output log terminal
-    stream_handler = logging.StreamHandler()
-    stream_handler.setLevel(logging.INFO)
-    stream_handler.setFormatter(formatter)
-
-    # output log file
-    file_handler = logging.FileHandler(log_filename, encoding='utf-8')
-    file_handler.setLevel(logging.INFO)
-    file_handler.setFormatter(formatter)
-
-    # add handlers
-    root_logger.addHandler(stream_handler)
-    root_logger.addHandler(file_handler)
-
-    _is_configured = True
 
 def get_logger(name: str) -> logging.Logger:
     """
-    Dipanggil untuk setiap module untuk mendapatkan logger
+    Retrieve a configured logger for the given name
     """
     setup_logging()
     return logging.getLogger(name)
