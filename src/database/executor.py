@@ -1,6 +1,7 @@
 from config.logger import get_logger
 from psycopg2.extensions import connection as PgConnection
 from psycopg2.extras import execute_values as pg_execute_values
+from typing import Any
 
 logger = get_logger(__name__)
 
@@ -48,7 +49,7 @@ class QueryExecutor:
             logger.exception("Failed to fetch query results.")
             raise
 
-    def fetch_one(self, sql: str, params=None):
+    def fetch_one(self, sql: str, params=None) -> Any :
         """
         Return the first row from a query
         """
@@ -60,7 +61,7 @@ class QueryExecutor:
             logger.exception("Failed to fetch a single row.")
             raise
 
-    def fetch_value(self, sql: str, params=None):
+    def fetch_value(self, sql: str, params=None) -> Any:
         """
         Return the first column of the first query result
         """
