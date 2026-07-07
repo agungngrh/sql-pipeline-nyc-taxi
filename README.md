@@ -200,39 +200,6 @@ POSTGRES_PASSWORD=postgres
 docker compose up --build
 ```
 
-### 4. Database Schema Creation
-
-The database schema does not need to be created manually. When the pipeline starts, `main.py` executes the initialization scripts in `sql/init/`, which create the four schemas (`bronze`, `silver`, `gold`, `audit`) and their tables before any data is loaded.
-
-If you need to re-run the initialization scripts manually — for example, after resetting the database — you can execute them directly inside the running container:
-
-```bash
-docker compose exec postgres psql -U postgres -d ny_taxi_db -f /sql/init/<script_name>.sql
-```
-
-### 5. Data Loading (Bronze Layer)
-
-Once the schema is ready, the pipeline downloads the source files (the Yellow Taxi Trips Parquet file and the Taxi Zone Lookup CSV) from the public TLC endpoints and loads them as-is into the Bronze tables, using the scripts in `sql/bronze/`. No transformation happens at this stage — it is a raw, one-to-one load.
-
-This step also runs automatically as part of `docker compose up --build`. If the containers are already running and you only want to re-trigger the pipeline logic:
-
-```bash
-docker compose run --rm pipeline python main.py
-```
-
-### 6. Running the SQL Transformations (Silver → Gold)
-
-After the Bronze tables are populated, the pipeline executes the transformation scripts in `sql/silver/` to clean, validate, and standardize the raw data, followed by the aggregation scripts in `sql/gold/` to build the analytical summary tables. Both stages run automatically, in sequence, as part of the same pipeline execution.
-
-Each stage is wrapped in a database transaction, so if a script fails partway through, that stage is rolled back instead of leaving partially transformed data in the tables.
-
-To confirm the transformation completed successfully:
-
-```sql
-SELECT COUNT(*) FROM silver.taxi_trips_cleaned;
-SELECT COUNT(*) FROM gold.daily_trip_summary;
-```
-
 #### PostgreSQL Command Line
 
 ```bash
@@ -249,7 +216,7 @@ SELECT COUNT(*) FROM gold.daily_trip_summary;
 SELECT * FROM audit.load_audit;
 ```
 
-### 7. Running the Analytics Queries
+### 4. Running the Analytics Queries
 
 The business analysis queries in `sql/analytics/business_queries.sql` are not executed automatically by the pipeline. They are meant to be run manually, after the Gold layer has been populated, since they query the finished Gold tables directly.
 
