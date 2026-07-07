@@ -96,6 +96,8 @@ This document summarizes the analytical results generated from the Gold layer us
 
 ---
 
+# Data Quality Analysis
+
 ## Q10. What are the most common data quality issues?
 
 **Result**
