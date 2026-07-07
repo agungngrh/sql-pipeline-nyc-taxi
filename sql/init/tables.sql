@@ -1,11 +1,16 @@
--- CREATE SCHEMAS
-CREATE SCHEMA IF NOT EXISTS bronze;
-CREATE SCHEMA IF NOT EXISTS silver;
-CREATE SCHEMA IF NOT EXISTS gold;
-CREATE SCHEMA IF NOT EXISTS audit;
+CREATE TABLE IF NOT EXISTS audit.load_audit (
+    audit_id SERIAL PRIMARY KEY,
+    schema_name VARCHAR(50) NOT NULL,
+    table_name VARCHAR(50) NOT NULL,
+    status VARCHAR(20) NOT NULL CHECK (status IN ('RUNNING', 'SUCCESS', 'FAILED')),
+    record_count BIGINT DEFAULT 0,
+    started_at TIMESTAMP NOT NULL DEFAULT clock_timestamp(),
+    completed_at TIMESTAMP,
+    duration_sec NUMERIC(10, 2),
+    error_message TEXT
+);
 
 
--- DDL BRONZE TABLES
 CREATE TABLE IF NOT EXISTS bronze.raw_taxi_trips (
     VendorID INTEGER,
     tpep_pickup_datetime TIMESTAMP,
@@ -36,7 +41,7 @@ CREATE TABLE IF NOT EXISTS bronze.raw_taxi_zones (
     service_zone TEXT
 );
 
--- DDL SILVER TABLES
+
 CREATE TABLE IF NOT EXISTS silver.taxi_zones (
     location_id INTEGER PRIMARY KEY,
     borough VARCHAR(50),
@@ -75,19 +80,22 @@ CREATE TABLE IF NOT EXISTS silver.taxi_trips_cleaned (
     time_period VARCHAR(20),
     trip_duration_minutes NUMERIC(8,2),
     payment_label VARCHAR(20),
+    store_and_fwd_flag_label VARCHAR(30),
 
     CONSTRAINT check_pickup_before_dropoff CHECK (dropoff_datetime > pickup_datetime)
 );
 
--- DDL ISSUES TABLE
+
 CREATE TABLE IF NOT EXISTS silver.data_quality_issues (
     issue_id SERIAL PRIMARY KEY,
+    audit_id INT NOT NULL REFERENCES audit.load_audit(audit_id) ON DELETE RESTRICT,
     error_type VARCHAR(50) NOT NULL,
     column_name VARCHAR(50),
+    issue_count BIGINT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- DDL GOLD TABLES
+
 CREATE TABLE IF NOT EXISTS gold.daily_trip_summary (
     pickup_date DATE PRIMARY KEY,
     total_trips INT,
@@ -95,27 +103,32 @@ CREATE TABLE IF NOT EXISTS gold.daily_trip_summary (
     avg_fare NUMERIC(8,2),
     avg_distance NUMERIC(8,2),
     avg_duration NUMERIC(8,2),
+    avg_tip NUMERIC(8,2),
+    avg_passenger NUMERIC(4,2),
     is_weekend BOOLEAN
 );
 
 CREATE TABLE IF NOT EXISTS gold.hourly_demand_summary (
-    pickup_hour INTEGER,
+    pickup_hour INTEGER PRIMARY KEY,
     time_period VARCHAR(20),
     total_trips INTEGER,
     total_revenue NUMERIC(12,2),
     avg_duration NUMERIC(8,2),
-    PRIMARY KEY (pickup_hour, time_period)
+    avg_tip NUMERIC(8,2),
+    avg_fare NUMERIC(8,2)
 );
 
 CREATE TABLE IF NOT EXISTS gold.zone_performance_summary (
     location_id INTEGER PRIMARY KEY,
     zone VARCHAR(100),
     borough VARCHAR(50),
-    total_pickup_trips  INTEGER,
+    total_pickup_trips INTEGER,
     total_dropoff_trips INTEGER,
     total_revenue NUMERIC(12,2),
     avg_fare NUMERIC(8,2),
-    avg_tip NUMERIC(8,2)
+    avg_tip NUMERIC(8,2),
+    avg_distance NUMERIC(8,2),
+    avg_duration NUMERIC(8,2)
 );
 
 CREATE TABLE IF NOT EXISTS gold.payment_behavior_summary (
@@ -123,7 +136,9 @@ CREATE TABLE IF NOT EXISTS gold.payment_behavior_summary (
     payment_label VARCHAR(30),
     total_trips INTEGER,
     total_revenue NUMERIC(12,2),
-    avg_tip NUMERIC(8,2)
+    avg_tip NUMERIC(8,2),
+    avg_fare NUMERIC(8,2),
+    tip_rate NUMERIC(10,2)
 );
 
 CREATE TABLE IF NOT EXISTS gold.route_performance_summary (
@@ -134,30 +149,7 @@ CREATE TABLE IF NOT EXISTS gold.route_performance_summary (
     total_trips INTEGER,
     total_revenue NUMERIC(12,2),
     avg_duration NUMERIC(8,2),
+    avg_fare NUMERIC(8,2),
+    avg_distance NUMERIC(8,2),
     PRIMARY KEY (pickup_location_id, dropoff_location_id)
 );
-
--- DDL AUDIT TABLES
-CREATE TABLE IF NOT EXISTS audit.load_audit (
-    audit_id SERIAL PRIMARY KEY,
-    schema_name VARCHAR(50) NOT NULL,
-    table_name VARCHAR(50) NOT NULL,
-    status VARCHAR(20) NOT NULL CHECK (status IN ('RUNNING', 'SUCCESS', 'FAILED')),
-    rows_affected INT DEFAULT 0,
-    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    completed_at TIMESTAMP,
-    error_message TEXT
-);
-
--- INDEXES 
-CREATE INDEX IF NOT EXISTS idx_trips_pickup_location
-    ON silver.taxi_trips_cleaned (pickup_location_id);
-
-CREATE INDEX IF NOT EXISTS idx_trips_dropoff_location
-    ON silver.taxi_trips_cleaned (dropoff_location_id);
-
-CREATE INDEX IF NOT EXISTS idx_trips_pickup_datetime
-    ON silver.taxi_trips_cleaned (pickup_datetime);
-
-CREATE INDEX idx_trip_pickup_date
-    ON silver.taxi_trips_cleaned(pickup_date);

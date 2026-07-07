@@ -217,3 +217,20 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# Environment
+.env
+
+# Logs
+logs/*.log
+
+# macOS
+.DS_Store
+
+# Raw datasets
+data/raw/*
+!data/raw/.gitkeep
