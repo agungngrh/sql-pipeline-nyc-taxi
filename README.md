@@ -200,10 +200,43 @@ POSTGRES_PASSWORD=postgres
 docker compose up --build
 ```
 
+### 4. Database Schema Creation
+
+The database schema does not need to be created manually. When the pipeline starts, `main.py` executes the initialization scripts in `sql/init/`, which create the four schemas (`bronze`, `silver`, `gold`, `audit`) and their tables before any data is loaded.
+
+If you need to re-run the initialization scripts manually — for example, after resetting the database — you can execute them directly inside the running container:
+
+```bash
+docker compose exec postgres psql -U postgres -d ny_taxi_db -f /sql/init/<script_name>.sql
+```
+
+### 5. Data Loading (Bronze Layer)
+
+Once the schema is ready, the pipeline downloads the source files (the Yellow Taxi Trips Parquet file and the Taxi Zone Lookup CSV) from the public TLC endpoints and loads them as-is into the Bronze tables, using the scripts in `sql/bronze/`. No transformation happens at this stage — it is a raw, one-to-one load.
+
+This step also runs automatically as part of `docker compose up --build`. If the containers are already running and you only want to re-trigger the pipeline logic:
+
+```bash
+docker compose run --rm pipeline python main.py
+```
+
+### 6. Running the SQL Transformations (Silver → Gold)
+
+After the Bronze tables are populated, the pipeline executes the transformation scripts in `sql/silver/` to clean, validate, and standardize the raw data, followed by the aggregation scripts in `sql/gold/` to build the analytical summary tables. Both stages run automatically, in sequence, as part of the same pipeline execution.
+
+Each stage is wrapped in a database transaction, so if a script fails partway through, that stage is rolled back instead of leaving partially transformed data in the tables.
+
+To confirm the transformation completed successfully:
+
+```sql
+SELECT COUNT(*) FROM silver.taxi_trips_cleaned;
+SELECT COUNT(*) FROM gold.daily_trip_summary;
+```
+
 #### PostgreSQL Command Line
 
 ```bash
-docker compose exec ny_taxi_postgres psql -U postgres -d ny_taxi_db
+docker compose exec postgres psql -U postgres -d ny_taxi_db
 ```
 
 Example queries:
@@ -215,6 +248,18 @@ SELECT COUNT(*) FROM gold.daily_trip_summary;
 
 SELECT * FROM audit.load_audit;
 ```
+
+### 7. Running the Analytics Queries
+
+The business analysis queries in `sql/analytics/business_queries.sql` are not executed automatically by the pipeline. They are meant to be run manually, after the Gold layer has been populated, since they query the finished Gold tables directly.
+
+To run the full set of queries at once:
+
+```bash
+docker compose exec postgres psql -U postgres -d ny_taxi_db -f /sql/analytics/business_queries.sql
+```
+
+The results and interpretation of these queries are documented in `docs/insight_report.md`.
 
 ## Pipeline Output
 
@@ -241,10 +286,22 @@ docs/insight_report.md
 
 ---
 
+## Business Questions
+
+1. How many valid taxi trips were recorded during January 2026
+2. What were the total revenue, average daily revenue, average fare, and average tip
+3. Which borough and pickup zone handled the highest number of trips
+4. Which pickup zones generated the highest revenue
+5. What are the most common data quality issues
+6. Are there any unusual daily or hourly trip patterns
+7. Which pickup zones generated the highest revenue
+8. Which zones have high demand but low average tips
+9. How did daily revenue change compared with the previous day
+10. What are the top three pickup zones in each borough
+
 ## Current Limitations
 
 - The project does not yet include automated unit tests (e.g., using Pytest) to validate the Python orchestration components.
 - The Silver layer applies validation rules based on general assumptions (e.g., positive values, valid datetime order, and valid fare_amount and so on) without performing a deeper Exploratory Data Analysis (EDA). A more comprehensive EDA combined with domain knowledge could refine the validation rules and reduce the risk of incorrectly classifying records as invalid.
 - The project enforces strict database constraints (CHECK) to maintain data integrity. While this simplifies data validation, some records that violate these constraints may still be valid under specific business scenarios. More domain-specific validation rules would improve the accuracy of data quality assessment.
 - The current approach separates records into valid and invalid datasets by excluding records that fail validation from the Silver table. An alternative design would be to retain all records in `silver.taxi_trips_cleaned` and add validation flag columns (for example, fare_validity_status, is_impossible_speed, is_valid_record or rule-specific flags). The `silver.data_quality_issues` table could then reference only the flagged records, allowing the Silver layer to preserve the complete dataset while still providing detailed data quality reporting.
-
